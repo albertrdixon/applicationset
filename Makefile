@@ -3,6 +3,7 @@ VERSION?=$(shell cat VERSION)
 IMAGE_NAMESPACE?=argoproj
 IMAGE_NAME?=argocd-applicationset
 IMAGE_TAG?=latest
+IMAGE_PLATFORMS?=linux/amd64
 CONTAINER_REGISTRY?=quay.io
 GIT_COMMIT = $(shell git rev-parse HEAD)
 LDFLAGS = -w -s -X ${VERSION_PACKAGE}.version=${VERSION} \
@@ -46,7 +47,7 @@ test: generate fmt vet manifests
 
 .PHONY: image
 image: test
-	docker build -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
+	docker buildx build --load --platform ${IMAGE_PLATFORMS} -t ${IMAGE_PREFIX}${IMAGE_NAME}:${IMAGE_TAG} .
 
 .PHONY: image-push
 image-push: image

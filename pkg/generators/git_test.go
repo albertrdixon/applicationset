@@ -62,12 +62,14 @@ func TestGitGenerateParamsFromDirectories(t *testing.T) {
 			repoApps: []string{
 				"app1",
 				"app2",
-				"p1/app3",
+				"app_3",
+				"p1/app4",
 			},
 			repoError: nil,
 			expected: []map[string]string{
-				{"path": "app1", "path.basename": "app1"},
-				{"path": "app2", "path.basename": "app2"},
+				{"path": "app1", "path.basename": "app1", "path.basenameNormalized": "app1"},
+				{"path": "app2", "path.basename": "app2", "path.basenameNormalized": "app2"},
+				{"path": "app_3", "path.basename": "app_3", "path.basenameNormalized": "app-3"},
 			},
 			expectedError: nil,
 		},
@@ -82,8 +84,8 @@ func TestGitGenerateParamsFromDirectories(t *testing.T) {
 			},
 			repoError: nil,
 			expected: []map[string]string{
-				{"path": "p1/app2", "path.basename": "app2"},
-				{"path": "p1/p2/app3", "path.basename": "app3"},
+				{"path": "p1/app2", "path.basename": "app2", "path[0]": "p1", "path.basenameNormalized": "app2"},
+				{"path": "p1/p2/app3", "path.basename": "app3", "path[0]": "p1", "path[1]": "p2", "path.basenameNormalized": "app3"},
 			},
 			expectedError: nil,
 		},
@@ -99,9 +101,9 @@ func TestGitGenerateParamsFromDirectories(t *testing.T) {
 			},
 			repoError: nil,
 			expected: []map[string]string{
-				{"path": "app1", "path.basename": "app1"},
-				{"path": "app2", "path.basename": "app2"},
-				{"path": "p2/app3", "path.basename": "app3"},
+				{"path": "app1", "path.basename": "app1", "path.basenameNormalized": "app1"},
+				{"path": "app2", "path.basename": "app2", "path.basenameNormalized": "app2"},
+				{"path": "p2/app3", "path.basename": "app3", "path[0]": "p2", "path.basenameNormalized": "app3"},
 			},
 			expectedError: nil,
 		},
@@ -117,9 +119,9 @@ func TestGitGenerateParamsFromDirectories(t *testing.T) {
 			},
 			repoError: nil,
 			expected: []map[string]string{
-				{"path": "app1", "path.basename": "app1"},
-				{"path": "app2", "path.basename": "app2"},
-				{"path": "p2/app3", "path.basename": "app3"},
+				{"path": "app1", "path.basename": "app1", "path.basenameNormalized": "app1"},
+				{"path": "app2", "path.basename": "app2", "path.basenameNormalized": "app2"},
+				{"path": "p2/app3", "path.basename": "app3", "path[0]": "p2", "path.basenameNormalized": "app3"},
 			},
 			expectedError: nil,
 		},
@@ -141,12 +143,15 @@ func TestGitGenerateParamsFromDirectories(t *testing.T) {
 		},
 	}
 
-	for _, c := range cases {
-		cc := c
-		t.Run(cc.name, func(t *testing.T) {
+	for _, testCase := range cases {
+		testCaseCopy := testCase
+
+		t.Run(testCaseCopy.name, func(t *testing.T) {
+			t.Parallel()
+
 			argoCDServiceMock := argoCDServiceMock{mock: &mock.Mock{}}
 
-			argoCDServiceMock.mock.On("GetDirectories", mock.Anything, mock.Anything, mock.Anything).Return(c.repoApps, c.repoError)
+			argoCDServiceMock.mock.On("GetDirectories", mock.Anything, mock.Anything, mock.Anything).Return(testCaseCopy.repoApps, testCaseCopy.repoError)
 
 			var gitGenerator = NewGitGenerator(argoCDServiceMock)
 			applicationSetInfo := argoprojiov1alpha1.ApplicationSet{
@@ -158,7 +163,7 @@ func TestGitGenerateParamsFromDirectories(t *testing.T) {
 						Git: &argoprojiov1alpha1.GitGenerator{
 							RepoURL:     "RepoURL",
 							Revision:    "Revision",
-							Directories: c.directories,
+							Directories: testCaseCopy.directories,
 						},
 					}},
 				},
@@ -166,11 +171,11 @@ func TestGitGenerateParamsFromDirectories(t *testing.T) {
 
 			got, err := gitGenerator.GenerateParams(&applicationSetInfo.Spec.Generators[0], nil)
 
-			if c.expectedError != nil {
-				assert.EqualError(t, err, c.expectedError.Error())
+			if testCaseCopy.expectedError != nil {
+				assert.EqualError(t, err, testCaseCopy.expectedError.Error())
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, c.expected, got)
+				assert.Equal(t, testCaseCopy.expected, got)
 			}
 
 			argoCDServiceMock.mock.AssertExpectations(t)
@@ -222,22 +227,26 @@ func TestGitGenerateParamsFromFiles(t *testing.T) {
 			repoPathsError: nil,
 			expected: []map[string]string{
 				{
-					"cluster.owner":        "john.doe@example.com",
-					"cluster.name":         "production",
-					"cluster.address":      "https://kubernetes.default.svc",
-					"key1":                 "val1",
-					"key2.key2_1":          "val2_1",
-					"key2.key2_2.key2_2_1": "val2_2_1",
-					"key3":                 "123",
-					"path":                 "cluster-config/production",
-					"path.basename":        "production",
+					"cluster.owner":           "john.doe@example.com",
+					"cluster.name":            "production",
+					"cluster.address":         "https://kubernetes.default.svc",
+					"key1":                    "val1",
+					"key2.key2_1":             "val2_1",
+					"key2.key2_2.key2_2_1":    "val2_2_1",
+					"key3":                    "123",
+					"path":                    "cluster-config/production",
+					"path.basename":           "production",
+					"path[0]":                 "cluster-config",
+					"path.basenameNormalized": "production",
 				},
 				{
-					"cluster.owner":   "foo.bar@example.com",
-					"cluster.name":    "staging",
-					"cluster.address": "https://kubernetes.default.svc",
-					"path":            "cluster-config/staging",
-					"path.basename":   "staging",
+					"cluster.owner":           "foo.bar@example.com",
+					"cluster.name":            "staging",
+					"cluster.address":         "https://kubernetes.default.svc",
+					"path":                    "cluster-config/staging",
+					"path.basename":           "staging",
+					"path[0]":                 "cluster-config",
+					"path.basenameNormalized": "staging",
 				},
 			},
 			expectedError: nil,
@@ -288,19 +297,23 @@ func TestGitGenerateParamsFromFiles(t *testing.T) {
 			repoPathsError: nil,
 			expected: []map[string]string{
 				{
-					"cluster.owner":     "john.doe@example.com",
-					"cluster.name":      "production",
-					"cluster.address":   "https://kubernetes.default.svc",
-					"cluster.inner.one": "two",
-					"path":              "cluster-config/production",
-					"path.basename":     "production",
+					"cluster.owner":           "john.doe@example.com",
+					"cluster.name":            "production",
+					"cluster.address":         "https://kubernetes.default.svc",
+					"cluster.inner.one":       "two",
+					"path":                    "cluster-config/production",
+					"path.basename":           "production",
+					"path[0]":                 "cluster-config",
+					"path.basenameNormalized": "production",
 				},
 				{
-					"cluster.owner":   "john.doe@example.com",
-					"cluster.name":    "staging",
-					"cluster.address": "https://kubernetes.default.svc",
-					"path":            "cluster-config/production",
-					"path.basename":   "production",
+					"cluster.owner":           "john.doe@example.com",
+					"cluster.name":            "staging",
+					"cluster.address":         "https://kubernetes.default.svc",
+					"path":                    "cluster-config/production",
+					"path.basename":           "production",
+					"path[0]":                 "cluster-config",
+					"path.basenameNormalized": "production",
 				},
 			},
 			expectedError: nil,
@@ -330,21 +343,25 @@ cluster:
 			repoPathsError: nil,
 			expected: []map[string]string{
 				{
-					"cluster.owner":        "john.doe@example.com",
-					"cluster.name":         "production",
-					"cluster.address":      "https://kubernetes.default.svc",
-					"key1":                 "val1",
-					"key2.key2_1":          "val2_1",
-					"key2.key2_2.key2_2_1": "val2_2_1",
-					"path":                 "cluster-config/production",
-					"path.basename":        "production",
+					"cluster.owner":           "john.doe@example.com",
+					"cluster.name":            "production",
+					"cluster.address":         "https://kubernetes.default.svc",
+					"key1":                    "val1",
+					"key2.key2_1":             "val2_1",
+					"key2.key2_2.key2_2_1":    "val2_2_1",
+					"path":                    "cluster-config/production",
+					"path.basename":           "production",
+					"path[0]":                 "cluster-config",
+					"path.basenameNormalized": "production",
 				},
 				{
-					"cluster.owner":   "foo.bar@example.com",
-					"cluster.name":    "staging",
-					"cluster.address": "https://kubernetes.default.svc",
-					"path":            "cluster-config/staging",
-					"path.basename":   "staging",
+					"cluster.owner":           "foo.bar@example.com",
+					"cluster.name":            "staging",
+					"cluster.address":         "https://kubernetes.default.svc",
+					"path":                    "cluster-config/staging",
+					"path.basename":           "staging",
+					"path[0]":                 "cluster-config",
+					"path.basenameNormalized": "staging",
 				},
 			},
 			expectedError: nil,
@@ -368,31 +385,38 @@ cluster:
 			repoPathsError: nil,
 			expected: []map[string]string{
 				{
-					"cluster.owner":     "john.doe@example.com",
-					"cluster.name":      "production",
-					"cluster.address":   "https://kubernetes.default.svc",
-					"cluster.inner.one": "two",
-					"path":              "cluster-config/production",
-					"path.basename":     "production",
+					"cluster.owner":           "john.doe@example.com",
+					"cluster.name":            "production",
+					"cluster.address":         "https://kubernetes.default.svc",
+					"cluster.inner.one":       "two",
+					"path":                    "cluster-config/production",
+					"path.basename":           "production",
+					"path[0]":                 "cluster-config",
+					"path.basenameNormalized": "production",
 				},
 				{
-					"cluster.owner":   "john.doe@example.com",
-					"cluster.name":    "staging",
-					"cluster.address": "https://kubernetes.default.svc",
-					"path":            "cluster-config/production",
-					"path.basename":   "production",
+					"cluster.owner":           "john.doe@example.com",
+					"cluster.name":            "staging",
+					"cluster.address":         "https://kubernetes.default.svc",
+					"path":                    "cluster-config/production",
+					"path.basename":           "production",
+					"path[0]":                 "cluster-config",
+					"path.basenameNormalized": "production",
 				},
 			},
 			expectedError: nil,
 		},
 	}
 
-	for _, c := range cases {
-		cc := c
-		t.Run(cc.name, func(t *testing.T) {
+	for _, testCase := range cases {
+		testCaseCopy := testCase
+
+		t.Run(testCaseCopy.name, func(t *testing.T) {
+			t.Parallel()
+
 			argoCDServiceMock := argoCDServiceMock{mock: &mock.Mock{}}
 			argoCDServiceMock.mock.On("GetFiles", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-				Return(c.repoFileContents, c.repoPathsError)
+				Return(testCaseCopy.repoFileContents, testCaseCopy.repoPathsError)
 
 			var gitGenerator = NewGitGenerator(argoCDServiceMock)
 			applicationSetInfo := argoprojiov1alpha1.ApplicationSet{
@@ -404,7 +428,7 @@ cluster:
 						Git: &argoprojiov1alpha1.GitGenerator{
 							RepoURL:  "RepoURL",
 							Revision: "Revision",
-							Files:    c.files,
+							Files:    testCaseCopy.files,
 						},
 					}},
 				},
@@ -413,11 +437,11 @@ cluster:
 			got, err := gitGenerator.GenerateParams(&applicationSetInfo.Spec.Generators[0], nil)
 			fmt.Println(got, err)
 
-			if c.expectedError != nil {
-				assert.EqualError(t, err, c.expectedError.Error())
+			if testCaseCopy.expectedError != nil {
+				assert.EqualError(t, err, testCaseCopy.expectedError.Error())
 			} else {
 				assert.NoError(t, err)
-				assert.ElementsMatch(t, c.expected, got)
+				assert.ElementsMatch(t, testCaseCopy.expected, got)
 			}
 
 			argoCDServiceMock.mock.AssertExpectations(t)

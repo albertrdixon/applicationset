@@ -1,21 +1,26 @@
 # Cluster Generator
 
-In Argo CD, managed clusters [are stored within Secrets](https://argoproj.github.io/argo-cd/operator-manual/declarative-setup/#clusters) in the Argo CD namespace. The ApplicationSet controller uses those same Secrets to generate parameters to identify and target available clusters.
+In Argo CD, managed clusters [are stored within Secrets](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#clusters) in the Argo CD namespace. The ApplicationSet controller uses those same Secrets to generate parameters to identify and target available clusters.
 
-For each cluster registered with Argo CD, the Cluster generator produces parameters based on the list of items found within the cluster secret. 
+For each cluster registered with Argo CD, the Cluster generator produces parameters based on the list of items found within the cluster secret.
 
 It automatically provides the following parameter values to the Application template for each cluster:
 
 - `name`
+- `nameNormalized` *('name' but normalized to contain only lowercase alphanumeric characters, '-' or '.')*
 - `server`
 - `metadata.labels.<key>` *(for each label in the Secret)*
 - `metadata.annotations.<key>` *(for each annotation in the Secret)*
 
-Within [Argo CD cluster Secrets](https://argoproj.github.io/argo-cd/operator-manual/declarative-setup/#clusters) are data fields describing the cluster:
+!!! note
+    Use the `nameNormalized` parameter if your cluster name contains characters (such as underscores) that are not valid for Kubernetes resource names. This prevents rendering invalid Kubernetes resources with names like `my_cluster-app1`, and instead would convert them to `my-cluster-app1`.
+
+
+Within [Argo CD cluster Secrets](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#clusters) are data fields describing the cluster:
 ```yaml
 kind: Secret
 data:
-  # Within Kubernetes these fields are actually encoded in Base64; they are decoded here for convenience. 
+  # Within Kubernetes these fields are actually encoded in Base64; they are decoded here for convenience.
   # (They are likewise decoded when passed as parameters by the Cluster generator)
   config: "{'tlsClientConfig':{'insecure':false}}"
   name: "in-cluster2"
@@ -85,7 +90,7 @@ The cluster selector also supports set-based requirements, as used by [several c
 
 ### Deploying to the local cluster
 
-In Argo CD, the 'local cluster' is the cluster upon which Argo CD (and the ApplicationSet controller) is installed. This is to distinguish it from 'remote clusters', which are those that are added to Argo CD [declaratively](https://argoproj.github.io/argo-cd/operator-manual/declarative-setup/#clusters) or via the [Argo CD CLI](https://argoproj.github.io/argo-cd/getting_started/#5-register-a-cluster-to-deploy-apps-to-optional).
+In Argo CD, the 'local cluster' is the cluster upon which Argo CD (and the ApplicationSet controller) is installed. This is to distinguish it from 'remote clusters', which are those that are added to Argo CD [declaratively](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#clusters) or via the [Argo CD CLI](https://argo-cd.readthedocs.io/en/stable/getting_started/#5-register-a-cluster-to-deploy-apps-to-optional).
  
 The cluster generator will automatically target both local and non-local clusters, for every cluster that matches the cluster selector.
 
@@ -105,11 +110,11 @@ However, if you do wish to target both local and non-local clusters, while also 
 
 1. Within the Argo CD web UI, select *Settings*, then *Clusters*.
 2. Select your local cluster, usually named `in-cluster`.
-3. Click the *Edit* button, and change the the *NAME* of the cluster to another value, for example `in-cluster-local`. Any other value here is fine. 
+3. Click the *Edit* button, and change the the *NAME* of the cluster to another value, for example `in-cluster-local`. Any other value here is fine.
 4. Leave all other fields unchanged.
 5. Click *Save*.
 
-These steps might seem counterintuitive, but the act of changing one of the default values for the local cluster causes the Argo CD Web UI to create a new secret for this cluster. In the Argo CD namespace, you should now see a Secret resource named `cluster-(cluster suffix)` with label `argocd.argoproj.io/secret-type": "cluster"`. You may also create a local [cluster secret declaratively](https://argoproj.github.io/argo-cd/operator-manual/declarative-setup/#clusters), or with the CLI using `argocd cluster add "(context name)" --in-cluster`, rather than through the Web UI.
+These steps might seem counterintuitive, but the act of changing one of the default values for the local cluster causes the Argo CD Web UI to create a new secret for this cluster. In the Argo CD namespace, you should now see a Secret resource named `cluster-(cluster suffix)` with label `argocd.argoproj.io/secret-type": "cluster"`. You may also create a local [cluster secret declaratively](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#clusters), or with the CLI using `argocd cluster add "(context name)" --in-cluster`, rather than through the Web UI.
 
 ### Pass additional key-value pairs via `values` field
 
@@ -124,13 +129,13 @@ spec:
         matchLabels:
           type: 'staging'
       # A key-value map for arbitrary parameters
-      values: 
+      values:
         revision: HEAD # staging clusters use HEAD branch
   - clusters:
       selector:
         matchLabels:
           type: 'production'
-      values: 
+      values:
         # production uses a different revision value, for 'stable' branch
         revision: stable
   template:
@@ -145,10 +150,10 @@ spec:
         path: guestbook
       destination:
         server: '{{server}}'
-        namespace: guestbook        
+        namespace: guestbook
 ```
 
-In this example the `revision` value from the `generators.clusters` fields is passed into the template as `values.revision`, containing either `HEAD` or `stable` (based on which generator generated the set of parameters). 
+In this example the `revision` value from the `generators.clusters` fields is passed into the template as `values.revision`, containing either `HEAD` or `stable` (based on which generator generated the set of parameters).
 
 !!! note
     The `values.` prefix is always prepended to values provided via `generators.clusters.values` field. Ensure you include this prefix in the parameter name within the `template` when using it.

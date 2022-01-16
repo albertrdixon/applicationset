@@ -17,12 +17,14 @@ spec:
     spec:
       containers:
         - command:
+            - entrypoint.sh
             - applicationset-controller
           image: quay.io/argoproj/argocd-applicationset:latest
           imagePullPolicy: Always
           name: argocd-applicationset-controller
           ports:
           - containerPort: 7000
+            name: webhook
           env:
             - name: NAMESPACE
               valueFrom:

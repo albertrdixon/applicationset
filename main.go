@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -50,6 +51,10 @@ import (
 	// +kubebuilder:scaffold:imports
 )
 
+const (
+	JsonFormat = "json"
+)
+
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
@@ -67,16 +72,19 @@ func init() {
 func main() {
 	var metricsAddr string
 	var probeBindAddr string
+	var webhookAddr string
 	var enableLeaderElection bool
 	var namespace string
 	var argocdRepoServer string
 	var policy string
 	var debugLog bool
 	var dryRun bool
+	var logFormat string
 	var logLevel string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeBindAddr, "probe-addr", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&webhookAddr, "webhook-addr", ":7000", "The address the webhook endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -86,9 +94,15 @@ func main() {
 	flag.BoolVar(&debugLog, "debug", false, "Print debug logs. Takes precedence over loglevel")
 	flag.StringVar(&logLevel, "loglevel", "info", "Set the logging level. One of: debug|info|warn|error")
 	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry run mode")
+	flag.StringVar(&logFormat, "logformat", "text", "Set the logging format. One of: text|json")
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	json := strings.ToLower(logFormat) == JsonFormat
+
+	ctrl.SetLogger(zap.New(zap.UseDevMode(!json)))
+	if json {
+		log.SetFormatter(&log.JSONFormatter{})
+	}
 
 	policyObj, exists := utils.Policies[policy]
 	if !exists {
@@ -144,11 +158,13 @@ func main() {
 	webhookHandler, err := utils.NewWebhookHandler(namespace, argoSettingsMgr, mgr.GetClient())
 	if err != nil {
 		setupLog.Error(err, "failed to create webhook handler")
-		os.Exit(1)
 	}
-	startWebhookServer(webhookHandler)
 
-	baseGenerators := map[string]generators.Generator{
+	if webhookHandler != nil {
+		startWebhookServer(webhookHandler, webhookAddr)
+	}
+
+	terminalGenerators := map[string]generators.Generator{
 		"List":                    generators.NewListGenerator(),
 		"Clusters":                generators.NewClusterGenerator(mgr.GetClient(), context.Background(), k8s, namespace),
 		"Git":                     generators.NewGitGenerator(services.NewArgoCDService(argoCDDB, argocdRepoServer)),
@@ -157,18 +173,30 @@ func main() {
 		"PullRequest":             generators.NewPullRequestGenerator(mgr.GetClient()),
 	}
 
-	combineGenerators := map[string]generators.Generator{
-		"Matrix": generators.NewMatrixGenerator(baseGenerators),
+	nestedGenerators := map[string]generators.Generator{
+		"List":                    terminalGenerators["List"],
+		"Clusters":                terminalGenerators["Clusters"],
+		"Git":                     terminalGenerators["Git"],
+		"SCMProvider":             terminalGenerators["SCMProvider"],
+		"ClusterDecisionResource": terminalGenerators["ClusterDecisionResource"],
+		"PullRequest":             terminalGenerators["PullRequest"],
+		"Matrix":                  generators.NewMatrixGenerator(terminalGenerators),
+		"Merge":                   generators.NewMergeGenerator(terminalGenerators),
 	}
 
-	all, err := generators.CombineMaps(baseGenerators, combineGenerators)
-	if err != nil {
-		setupLog.Error(err, "generators can't be combined")
-		os.Exit(1)
+	topLevelGenerators := map[string]generators.Generator{
+		"List":                    terminalGenerators["List"],
+		"Clusters":                terminalGenerators["Clusters"],
+		"Git":                     terminalGenerators["Git"],
+		"SCMProvider":             terminalGenerators["SCMProvider"],
+		"ClusterDecisionResource": terminalGenerators["ClusterDecisionResource"],
+		"PullRequest":             terminalGenerators["PullRequest"],
+		"Matrix":                  generators.NewMatrixGenerator(nestedGenerators),
+		"Merge":                   generators.NewMergeGenerator(nestedGenerators),
 	}
 
 	if err = (&controllers.ApplicationSetReconciler{
-		Generators:       all,
+		Generators:       topLevelGenerators,
 		Client:           mgr.GetClient(),
 		Log:              ctrl.Log.WithName("controllers").WithName("ApplicationSet"),
 		Scheme:           mgr.GetScheme(),
@@ -208,12 +236,12 @@ func setLoggingLevel(debug bool, logLevel string) {
 	}
 }
 
-func startWebhookServer(webhookHandler *utils.WebhookHandler) {
+func startWebhookServer(webhookHandler *utils.WebhookHandler, webhookAddr string) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/webhook", webhookHandler.Handler)
 	go func() {
 		setupLog.Info("Starting webhook server")
-		err := http.ListenAndServe(":7000", mux)
+		err := http.ListenAndServe(webhookAddr, mux)
 		if err != nil {
 			setupLog.Error(err, "failed to start webhook server")
 			os.Exit(1)

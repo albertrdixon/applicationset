@@ -66,7 +66,7 @@ func (g *ClusterGenerator) GenerateParams(
 	}
 
 	if appSetGenerator.Clusters == nil {
-		return nil, nil
+		return nil, EmptyAppSetGeneratorError
 	}
 
 	// Do not include the local cluster in the cluster parameters IF there is a non-empty selector
@@ -118,7 +118,8 @@ func (g *ClusterGenerator) GenerateParams(
 	// For each matching cluster secret (non-local clusters only)
 	for _, cluster := range secretsFound {
 		params := map[string]string{}
-		params["name"] = sanitizeName(string(cluster.Data["name"]))
+		params["name"] = string(cluster.Data["name"])
+		params["nameNormalized"] = sanitizeName(string(cluster.Data["name"]))
 		params["server"] = string(cluster.Data["server"])
 		for key, value := range cluster.ObjectMeta.Annotations {
 			params[fmt.Sprintf("metadata.annotations.%s", key)] = value

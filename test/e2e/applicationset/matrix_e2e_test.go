@@ -77,7 +77,7 @@ func TestListMatrixGenerator(t *testing.T) {
 				Generators: []v1alpha1.ApplicationSetGenerator{
 					{
 						Matrix: &v1alpha1.MatrixGenerator{
-							Generators: []v1alpha1.ApplicationSetBaseGenerator{
+							Generators: []v1alpha1.ApplicationSetNestedGenerator{
 								{
 									List: &v1alpha1.ListGenerator{
 										Elements: []apiextensionsv1.JSON{
@@ -203,7 +203,7 @@ func TestClusterMatrixGenerator(t *testing.T) {
 				Generators: []v1alpha1.ApplicationSetGenerator{
 					{
 						Matrix: &v1alpha1.MatrixGenerator{
-							Generators: []v1alpha1.ApplicationSetBaseGenerator{
+							Generators: []v1alpha1.ApplicationSetNestedGenerator{
 								{
 									Clusters: &v1alpha1.ClusterGenerator{
 										Selector: metav1.LabelSelector{
